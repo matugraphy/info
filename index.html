@@ -580,7 +580,9 @@ function dayHtml(isTomorrow, nowT) {
   const inDay = steps.filter(s => dayKey(s[0]) === key && s[7]);
   const rows = [];
   [0, 6, 12, 18].forEach(b => {
-    const first = inDay.find(s => hourOf(s[0]) >= b && hourOf(s[0]) < b + 6 && (isTomorrow || s[0] > nowT));
+    const inBlock = inDay.filter(s => hourOf(s[0]) >= b && hourOf(s[0]) < b + 6);
+    // Today: start at the next full hour like Yr; in the day's last hour fall back to the hour under way.
+    const first = isTomorrow ? inBlock[0] : inBlock.find(s => s[0] > nowT) || inBlock.find(s => s[0] + 3600 > nowT);
     if (first) rows.push({ s: first, from: hourOf(first[0]), to: b + 6 });
   });
   const title = `<div class="daytitle">${isTomorrow ? "Homme" : "Täna"}, ${longDate(nowT + (isTomorrow ? 86400 : 0))}</div>`;
