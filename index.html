@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#050607">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Elekter ja ilm</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style id="cssE">
+/* One column, big type: the current price first, then the day as a bar chart.
+   The page fills exactly one screen; on a short landscape screen the top collapses into one strip. */
+:root {
+  --bg: #f6f7f5; --fg: #111614; --muted: #4a524e; --line: #c9cfcb; --card: #ffffff;
+  --cheap: #2e9d4f; --cheap-ink: #ffffff;
+  --mid: #f2c94c; --mid-ink: #111614;
+  --high: #d63a2f; --high-ink: #ffffff;
+  --focus: #1d4ed8;
+  --font: "Atkinson Hyperlegible", "Verdana", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --fg: #f3f5f4; --muted: #b5bdb8; --line: #36403b; --card: #1b201d;
+  --cheap: #3fb866; --cheap-ink: #08140c; --mid: #f2c94c; --mid-ink: #111614; --high: #ef5a4c; --high-ink: #1a0503;
+  --focus: #93b4ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121614; --fg: #f3f5f4; --muted: #b5bdb8; --line: #36403b; --card: #1b201d;
+  --cheap: #3fb866; --cheap-ink: #08140c; --mid: #f2c94c; --mid-ink: #111614; --high: #ef5a4c; --high-ink: #1a0503;
+  --focus: #93b4ff; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 20px; line-height: 1.4;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+main { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+header { display: none; }
+h1 { font-size: 34px; margin: 0; text-wrap: balance; }
+.date { color: var(--muted); font-size: 22px; margin: 2px 0 0; }
+
+.now { border-radius: 18px; padding: 12px 18px; display: flex; flex-direction: column; gap: 4px; background: var(--card); border: 3px solid var(--line); }
+.now.cheap { background: var(--cheap); color: var(--cheap-ink); border-color: transparent; }
+.now.mid { background: var(--mid); color: var(--mid-ink); border-color: transparent; }
+.now.high { background: var(--high); color: var(--high-ink); border-color: transparent; }
+.now .lbl { font-size: 20px; font-weight: 700; }
+.now .price { font-size: 60px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.now .unit { font-size: 24px; font-weight: 400; }
+.now .verdict { font-size: 32px; font-weight: 700; letter-spacing: .04em; }
+
+
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.controls button { font: inherit; font-size: 19px; font-weight: 700; padding: 8px; border-radius: 12px; cursor: pointer;
+  border: 3px solid var(--fg); background: var(--card); color: var(--fg); }
+.controls button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.controls #fs { align-self: flex-end; font-size: 15px; font-weight: 400; padding: 6px; line-height: 0; border: 1.5px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); }
+.graph .controls #fs { align-self: center; flex: 0 0 auto; }
+.controls button:disabled { opacity: .45; cursor: default; }
+button:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
+.note { color: var(--muted); margin: 0; font-size: 19px; }
+
+.day { display: flex; flex-direction: column; gap: 6px; }
+.cheap-c { background: var(--cheap); color: var(--cheap-ink); }
+.mid-c { background: var(--mid); color: var(--mid-ink); }
+.high-c { background: var(--high); color: var(--high-ink); }
+footer { color: var(--muted); font-size: 16px; }
+
+.controls { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.controls .tabs { flex: 1; }
+.chart { flex: 1; min-height: 150px; display: flex; flex-direction: column; }
+.plot { position: relative; flex: 1; margin-top: 1.7em; border-bottom: 3px solid var(--fg); }
+.cols, .hrs { display: grid; grid-template-columns: repeat(var(--n, 24), minmax(0, 1fr)); gap: 3px; }
+.cols { position: absolute; inset: 0; }
+.col { position: relative; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 5px 5px 0 0; }
+.bar.cur { outline: 3px solid var(--fg); outline-offset: 2px; }
+.col.past { opacity: .6; }
+.val { position: absolute; left: -6px; right: -6px; text-align: center; font-weight: 700; font-size: var(--vf, 16px); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.limit { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--muted); z-index: 1; pointer-events: none; }
+.limit span { position: absolute; left: 0; top: -1.35em; font-size: 15px; font-weight: 700; color: var(--muted); background: var(--bg); padding: 0 4px; border-radius: 4px; }
+.hrs { margin-top: 5px; text-align: center; color: var(--muted); font-size: var(--hf, 14px); font-variant-numeric: tabular-nums; }
+.hrs .cur { color: var(--fg); font-weight: 700; }
+#turn { margin-top: 8px; font-size: 17px; }
+
+/* The page is exactly one screen tall and the chart takes what is left. */
+.graph body { padding-block: 12px; }
+.graph main { max-width: 1200px; height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); gap: 14px; }
+.graph footer { font-size: 13px; }
+@media (orientation: landscape) and (max-height: 700px) {
+  .graph header { display: none; }
+  .graph main { gap: 8px; }
+  .graph .now { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 16px; row-gap: 0; padding: 8px 20px; border-radius: 14px; }
+  .graph .now .lbl { font-size: 22px; }
+  .graph .now .price { font-size: 46px; }
+  .graph .now .unit { font-size: 20px; }
+  .graph .now .verdict { font-size: 32px; }
+  .graph .controls { flex-direction: row; }
+  .graph .controls .tabs { flex: 1; gap: 6px; }
+
+  .graph .controls button { font-size: 15px; padding: 3px 6px; border-width: 2px; border-radius: 8px; }
+  .graph .note { font-size: 15px; }
+  .graph .chart { min-height: 150px; }
+}
+@media (max-width: 420px) { .now .price { font-size: 52px; } }
+</style>
+<style id="cssH">
+/* Home screen: near-black, dim grey type, one small colour dot. Darker still from 22 to 7. */
+:root { --hbg: #050607; --hfg: #8f979c; --hdim: #5d6469; --hline: #2a2f33;
+  --fg: var(--hfg); --muted: var(--hdim); --line: var(--hline);
+  --dot-cheap: #2e9d4f; --dot-mid: #b39634; --dot-high: #b8463c; color-scheme: dark; }
+:root.night { --hfg: #586064; --hdim: #3b4144; --hline: #1b1f22; }
+body { margin: 0; background: var(--hbg); color: var(--hfg); font-family: "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+#vH { height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; }
+.home { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; align-items: center; padding-block: 12px; }
+.hleft { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clock { font-size: clamp(64px, 30vh, 150px); font-weight: 700; line-height: .95; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.hdate { font-size: clamp(17px, 5vh, 26px); color: var(--hdim); }
+.vals { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: clamp(22px, 7.5vh, 34px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.vals .lbl { display: inline-block; width: 4.4em; font-weight: 400; font-size: .68em; color: var(--hdim); }
+.vals .unit { font-size: .6em; font-weight: 400; color: var(--hdim); }
+.dot { display: inline-block; width: .5em; height: .5em; border-radius: 50%; margin-left: .35em; vertical-align: middle; }
+.dot.cheap { background: var(--dot-cheap); } .dot.mid { background: var(--dot-mid); } .dot.high { background: var(--dot-high); }
+.night .dot { opacity: .55; }
+.hright { display: flex; flex-direction: column; gap: 18px; }
+.hright button { font: 700 clamp(24px, 4vw, 36px) "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif; letter-spacing: .06em; cursor: pointer;
+  color: var(--hfg); background: transparent; border: 3px solid var(--hline); border-radius: 22px; padding: clamp(16px, 7vh, 32px) 10px; }
+.hright button:focus-visible { outline: 3px solid var(--hfg); outline-offset: 3px; }
+.hfoot { display: flex; justify-content: flex-end; padding-bottom: 8px; }
+@media (orientation: landscape) {
+  .hleft { justify-self: center; }
+  .clock { font-size: clamp(72px, 36vh, 180px); }
+  .hdate { font-size: clamp(18px, 6.5vh, 32px); }
+  .vals { font-size: clamp(24px, 9.5vh, 46px); }
+}
+@media (orientation: portrait) {
+  .home { grid-template-columns: 1fr; align-content: space-between; padding-block: 32px 16px; }
+  .clock { font-size: clamp(64px, 27vw, 128px); }
+  .hdate { font-size: 22px; } .vals { font-size: 32px; }
+  .hright button { font-size: 30px; padding: 26px 10px; }
+}
+</style>
+<style id="cssW">
+/* Same frame as the electricity page: the weather now on top, Täna/Homme, then the day in four 6-hour rows like Yr. */
+:root {
+  --bg: #f3f6f9; --fg: #0f1720; --muted: #4a5663; --line: #cdd6df; --card: #ffffff;
+  --warm: #c2410c; --cold: #1d5fd1; --rain: #1d6fd8; --wind: #0f1720;
+  --sun: #f2a900; --moon: #8b97a8; --cloud: #e4e9ef; --cloud-edge: #8d99a7; --cloud-dark: #a7b1bd;
+  --snow: #ffffff; --bolt: #f2a900;
+  --focus: #1d4ed8;
+  --font: "Atkinson Hyperlegible", "Verdana", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1726; --fg: #f1f5f9; --muted: #a9b6c6; --line: #2b3a50; --card: #142238;
+  --warm: #ff9a4d; --cold: #7fb2ff; --rain: #8cbcff; --wind: #f1f5f9;
+  --moon: #c9d3e0; --cloud: #e4e9ef; --cloud-edge: #e4e9ef; --cloud-dark: #9aa6b4;
+  --focus: #93b4ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d1726; --fg: #f1f5f9; --muted: #a9b6c6; --line: #2b3a50; --card: #142238;
+  --warm: #ff9a4d; --cold: #7fb2ff; --rain: #8cbcff; --wind: #f1f5f9;
+  --moon: #c9d3e0; --cloud: #e4e9ef; --cloud-edge: #e4e9ef; --cloud-dark: #9aa6b4;
+  --focus: #93b4ff; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 20px; line-height: 1.35;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 24px; }
+main { position: relative; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+.now { background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 12px 18px;
+  display: grid; grid-template-columns: auto 1fr; column-gap: 16px; align-items: center; }
+.now .lbl { grid-column: 1 / -1; grid-row: 1; }
+.now .ico { width: 96px; height: 96px; grid-column: 1; grid-row: 2 / 4; }
+.now .temp { grid-column: 2; grid-row: 2; }
+.now .extra { grid-column: 2; grid-row: 3; }
+.now .lbl { font-size: 20px; font-weight: 700; color: var(--muted); }
+.now .temp { font-size: 64px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.lbldate { display: none; }
+.now .extra { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 22px; }
+
+.controls { display: flex; align-items: center; gap: 10px; }
+.tabs { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.controls button { font: inherit; font-size: 19px; font-weight: 700; padding: 8px; border-radius: 12px; cursor: pointer;
+  border: 3px solid var(--fg); background: var(--card); color: var(--fg); }
+.controls button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.controls #fs { flex: 0 0 auto; padding: 6px; line-height: 0; border: 1.5px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); }
+button:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
+
+.days { display: grid; gap: 10px; }
+.day { min-width: 0; background: var(--card); border-radius: 18px; padding: 4px 14px; }
+.daytitle { font-weight: 700; color: var(--muted); font-size: 19px; padding: 10px 2px 2px; }
+.row { display: grid; grid-template-columns: 4.6em 64px 3.2em 1fr auto; align-items: center; gap: 8px;
+  padding: 10px 2px; border-bottom: 2px solid var(--line); font-variant-numeric: tabular-nums; }
+.row:last-child { border-bottom: 0; }
+.row.head { padding: 6px 2px 2px; border: 0; font-size: 15px; color: var(--muted); }
+.row .when { color: var(--muted); font-size: 22px; }
+.row .ico { width: 56px; height: 56px; }
+.row .t { font-size: 28px; font-weight: 700; }
+.row .p { font-size: 24px; color: var(--rain); white-space: nowrap; }
+.row .w { font-size: 24px; white-space: nowrap; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.row.head .w { justify-content: flex-end; font-size: 15px; }
+.warm { color: var(--warm); } .cold { color: var(--cold); }
+.arrow { width: 26px; height: 26px; flex: 0 0 auto; }
+.note { color: var(--muted); margin: 0; font-size: 18px; padding: 12px 2px; }
+footer { color: var(--muted); font-size: 14px; }
+
+@media (max-width: 440px) {
+  .row { grid-template-columns: 3.7em 44px 2.4em 1fr auto; gap: 6px; }
+  .row .ico { width: 44px; height: 44px; }
+  .row .when { font-size: 18px; } .row .t { font-size: 24px; } .row .p, .row .w { font-size: 20px; }
+  .arrow { width: 22px; height: 22px; }
+  .now .ico { width: 80px; height: 80px; } .now .temp { font-size: 56px; } .now .extra { font-size: 19px; }
+}
+@media (orientation: landscape) and (min-width: 700px) {
+  main { max-width: 1100px; }
+  .days { grid-template-columns: 1fr 1fr; }
+  .tabs { display: none; }
+  .controls { display: none; }
+  .row { grid-template-columns: 4.2em 44px 2.6em 1fr auto; gap: 6px; }
+  .row .when { font-size: 20px; } .row .t { font-size: 24px; } .row .p, .row .w { font-size: 21px; }
+  .row .ico { width: 44px; height: 44px; }
+}
+@media (orientation: landscape) and (max-height: 700px) {
+  main { gap: 8px; }
+  body { padding-block: 8px; }
+  .now { grid-template-columns: auto auto 1fr; column-gap: 18px; padding: 4px 16px; }
+  .now .ico { grid-column: 1; grid-row: 1 / 3; }
+  .now .temp { grid-column: 2; grid-row: 1 / 3; }
+  .now .lbl { grid-column: 3; grid-row: 1; font-size: 18px; }
+  .now .extra { grid-column: 3; grid-row: 2; }
+  .lbldate { display: inline; }
+  .now .ico { width: 54px; height: 54px; }
+  .now .temp { font-size: 44px; }
+  .now .extra { font-size: 20px; }
+  .controls button { font-size: 15px; padding: 3px 6px; border-width: 2px; border-radius: 8px; }
+  .row { padding: 1px 2px; } .row .ico { width: 40px; height: 40px; } .row.head { padding: 2px; }
+  footer { font-size: 12px; }
+  .daytitle { font-size: 16px; padding: 4px 2px 0; }
+  .row .ico { width: 38px; height: 38px; }
+}
+</style>
+<style>
+/* Shared: the view switch and fullscreen icon sit in the top right corner of whichever "now" box is showing. */
+[hidden] { display: none !important; }
+.now { position: relative; }
+.switcher { position: absolute; top: 10px; right: 10px; z-index: 2; }
+#swBtn { font: 700 20px/1 "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif; letter-spacing: .06em; cursor: pointer; min-height: 48px;
+  color: inherit; background: transparent; border: 3px solid currentColor; border-radius: 12px; padding: 12px 18px; }
+#swBtn:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+/* Fullscreen stays out of the way: a small icon at the end of the footer line, far from the big buttons. */
+footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+#fs { flex: 0 0 auto; cursor: pointer; padding: 3px; line-height: 0; color: var(--muted); background: transparent; border: 1.5px solid var(--line); border-radius: 6px; }
+#fs svg { width: 18px; height: 18px; }
+#fs:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+@media (orientation: landscape) { #vE .now, #vW .now { padding-right: 175px !important; } }
+@media (orientation: portrait) { #swBtn { font-size: 18px; padding: 12px 14px; } #vE .now .lbl { font-size: 16px; } }
+@media (orientation: portrait) { #vW .now .lbl { font-size: 17px; padding-right: 145px; } }
+/* Two weather days side by side on narrower sideways phones: tighter columns so each row still fits its half. */
+@media (orientation: landscape) and (min-width: 700px) and (max-width: 900px) {
+  #vW .days { gap: 8px; }
+  #vW .day { padding: 2px 10px; }
+  #vW .row { grid-template-columns: 3.4em 34px 2.2em 1fr auto; gap: 4px; }
+  #vW .row .when { font-size: 17px; } #vW .row .t { font-size: 21px; } #vW .row .p, #vW .row .w { font-size: 18px; }
+  #vW .row .ico { width: 34px; height: 34px; } #vW .arrow { width: 20px; height: 20px; }
+  #vW .row.head, #vW .row.head .w { font-size: 13px; }
+}
+/* Sideways: the AVALEHT button sits vertically centred in the current box. */
+@media (orientation: landscape) { .switcher { top: 50%; transform: translateY(-50%); } }
+/* Elekter sideways: "Praegu" over the time, both larger, centred against the price. */
+@media (orientation: landscape) and (max-height: 700px) {
+  #vE .now { align-items: center; }
+  #vE .now .lbl { font-size: clamp(16px, 2.6vw, 26px) !important; line-height: 1.15; white-space: nowrap; }
+  #vE .lsep { display: none; } #vE .ltime { display: block; }
+  /* Ilm sideways: a bigger current box, roomier rows, centred column titles. */
+  #vW .now .ico { width: clamp(48px, 16vh, 80px); height: clamp(48px, 16vh, 80px); }
+  #vW .now .temp { font-size: clamp(40px, 14vh, 64px); }
+  #vW .now .lbl { font-size: clamp(17px, 2.4vw, 24px); }
+  #vW .now .extra { font-size: clamp(18px, 2.6vw, 26px); }
+  #vW .row { padding-block: clamp(0px, calc(1.6vh - 3px), 8px); }
+  #vW .row .t, #vW .row .p, #vW .row.head span:nth-child(3), #vW .row.head span:nth-child(4) { text-align: center; }
+  /* Fill the screen: the day cards stretch to the footer and their rows share the height. */
+  #vW { height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  #vW .days { flex: 1; min-height: 0; }
+  #vW .day { display: flex; flex-direction: column; min-height: 0; }
+  #vW .row:not(.head) { flex: 1 1 auto; max-height: 22%; }
+}
+/* Sideways the current box is one line: it never wraps, the text scales down with the screen width instead. */
+@media (orientation: landscape) and (max-height: 700px) {
+  .graph .now { flex-wrap: nowrap; white-space: nowrap; column-gap: clamp(8px, 1.4vw, 16px); }
+  .graph .now .lbl { font-size: clamp(13px, 2vw, 20px); }
+  .graph .now .price { font-size: clamp(28px, 5.2vw, 52px); }
+  .graph .now .unit { font-size: clamp(13px, 2vw, 20px); }
+  .graph .now .verdict { font-size: clamp(18px, 3.4vw, 34px); }
+  #vW .now .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+}
+</style>
+
+</head>
+<body>
+<main id="vE">
+  <header>
+    <h1>Elektri hind</h1>
+    <p class="date" id="date">&nbsp;</p>
+  </header>
+
+  <section class="now" id="now" aria-live="polite">
+    <span class="lbl" id="nowLbl">Praegu</span>
+    <span class="price" id="nowPrice">…</span>
+    <span class="verdict" id="nowVerdict"></span>
+  </section>
+
+  <div class="controls">
+    <div class="tabs">
+      <button id="tToday" type="button" aria-pressed="true">Täna</button>
+      <button id="tTomorrow" type="button" aria-pressed="false">Homme</button>
+    </div>
+  </div>
+  <p class="note" id="note" hidden></p>
+
+  <section class="day" id="day"></section>
+
+  <section class="chart" id="chart" hidden>
+    <div class="plot"><div class="cols" id="cols"></div></div>
+    <div class="hrs" id="hrs"></div>
+    <p class="note" id="turn" hidden>Keera telefon külili, siis näed kõiki hindu.</p>
+  </section>
+
+  <footer id="foot">Tunnihind senti/kWh, ilma käibemaksuta. Allikas: Elering, Nord Pool börsihind Eestis.</footer>
+</main>
+
+<main id="vW" hidden>
+  <section class="now" id="wNow" aria-live="polite">
+    <span class="ico" id="wNowIco"></span>
+    <span class="lbl" id="wNowLbl">Mäe-Rõuge praegu<span class="lbldate" id="wNowDate"></span></span>
+    <span class="temp" id="wNowTemp">…</span>
+    <span class="extra" id="wNowExtra"></span>
+  </section>
+
+  <div class="controls">
+    <div class="tabs">
+      <button id="wToday" type="button" aria-pressed="true">Täna</button>
+      <button id="wTomorrow" type="button" aria-pressed="false">Homme</button>
+    </div>
+  </div>
+
+  <section class="days" id="wDays"></section>
+
+  <footer id="wFoot">Ilmaennustus: Yr, Norra Meteoroloogiainstituut (MET Norway), litsents CC BY 4.0.</footer>
+</main>
+
+<main id="vH" hidden>
+  <div class="home">
+    <div class="hleft">
+      <div class="clock" id="hClock">--:--</div>
+      <div class="hdate" id="hDate"></div>
+      <div class="vals">
+        <div><span class="lbl">Elekter</span><span id="hPrice">–</span> <span class="unit">s/kWh</span><span class="dot" id="hDot"></span></div>
+        <div><span class="lbl">Ilm</span><span id="hTemp">–</span> <span class="unit" id="hWord"></span></div>
+      </div>
+    </div>
+    <div class="hright">
+      <button id="hE" type="button">ELEKTER</button>
+      <button id="hW" type="button">ILM</button>
+    </div>
+  </div>
+  <div class="hfoot" id="hFoot"></div>
+</main>
+
+<div class="switcher" id="switcher"><button id="swBtn" type="button" aria-label="Avaleht">AVALEHT</button></div>
+<button id="fs" type="button" aria-label="Täisekraan" title="Täisekraan" hidden></button>
+
+<script>(() => {
+const TZ = "Europe/Tallinn";
+const dayKey = t => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(t * 1000));
+const hm = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t * 1000));
+const hour = t => hm(t).slice(0, 2);
+const longDate = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(new Date(t * 1000));
+const cents = p => p / 10;
+const fmt = c => c.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const level = c => c < 5 ? "cheap" : c < 20 ? "mid" : "high";
+const WORD = { cheap: "ODAV", mid: "KESKMINE", high: "KALLIS" };
+
+let hours = [], showTomorrow = false, pickedOn = "";
+
+function render() {
+  const nowT = Date.now() / 1000;
+  const today = dayKey(nowT), tomorrow = dayKey(nowT + 86400);
+  const todays = hours.filter(s => dayKey(s[0]) === today);
+  const tomorrows = hours.filter(s => dayKey(s[0]) === tomorrow);
+  // "Homme" picked yesterday must not carry over past midnight.
+  if (showTomorrow && pickedOn !== today) showTomorrow = false;
+
+  document.getElementById("date").textContent = longDate(nowT);
+
+  const cur = hours.find(s => s[0] <= nowT && nowT < s[0] + 3600);
+  const box = document.getElementById("now");
+  if (cur) {
+    const c = cents(cur[1]), lv = level(c);
+    box.className = "now " + lv;
+    document.getElementById("nowLbl").innerHTML = 'Praegu<span class="lsep">, </span><span class="ltime">' + hm(cur[0]) + "–" + hm(cur[0] + 3600) + "</span>";
+    document.getElementById("nowPrice").innerHTML = fmt(c) + ' <span class="unit">senti/kWh</span>';
+    document.getElementById("nowVerdict").textContent = WORD[lv];
+  } else {
+    box.className = "now";
+    document.getElementById("nowLbl").textContent = "Praegu";
+    document.getElementById("nowPrice").textContent = "Hind puudub";
+    document.getElementById("nowVerdict").textContent = "";
+  }
+
+  const tb = document.getElementById("tTomorrow");
+  // The auction day ends at 01:00 Tallinn time, so the day after always has one stray hour; wait for a full day.
+  tb.disabled = tomorrows.length < 20;
+  if (tb.disabled) showTomorrow = false;
+  document.getElementById("tToday").setAttribute("aria-pressed", String(!showTomorrow));
+  tb.setAttribute("aria-pressed", String(showTomorrow));
+  const note = document.getElementById("note");
+  note.hidden = !tb.disabled;
+  note.textContent = "Homsed hinnad tulevad iga päev umbes kell 14.";
+
+  document.getElementById("chart").hidden = false;
+
+  const list = showTomorrow ? tomorrows : todays;
+  const day = document.getElementById("day");
+  day.textContent = "";
+  if (!list.length) { document.getElementById("chart").hidden = true; day.innerHTML = '<p class="note">Selle päeva hinnad puuduvad.</p>'; return; }
+  drawChart(list, cur, nowT);
+}
+
+// Bars share one scale; labels lose decimals only when the bars get narrow.
+function drawChart(list, cur, nowT) {
+  const cols = document.getElementById("cols"), hrs = document.getElementById("hrs"), chart = document.getElementById("chart");
+  const vals = list.map(s => cents(s[1]));
+  const top = Math.max(22, ...vals);
+  const pct = c => Math.max(0, c) / top * 100;
+  chart.style.setProperty("--n", list.length);
+  const colW = cols.clientWidth / list.length;
+  const tight = colW < 24;
+  document.getElementById("turn").hidden = !tight;
+  const dec = colW >= 56 ? 2 : colW >= 38 ? 1 : 0;
+  const label = c => c.toLocaleString("et-EE", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const chars = Math.max(...vals.map(c => label(c).length));
+  chart.style.setProperty("--vf", Math.round(Math.min(20, Math.max(11, (colW + 8) / (chars * 0.58)))) + "px");
+  chart.style.setProperty("--hf", Math.round(Math.min(26, Math.max(13, colW * (tight ? 1.3 : 0.62)))) + "px");
+  cols.textContent = ""; hrs.textContent = "";
+  list.forEach((s, i) => {
+    const c = vals[i], col = document.createElement("div"), bar = document.createElement("div"), val = document.createElement("div");
+    col.className = "col";
+    if (s !== cur && s[0] + 3600 <= nowT) col.classList.add("past");
+    bar.className = "bar " + level(c) + "-c" + (s === cur ? " cur" : "");
+    bar.style.height = Math.max(1, pct(c)) + "%";
+    val.className = "val"; val.style.bottom = "calc(" + Math.max(1, pct(c)) + "% + 4px)";
+    val.textContent = label(c);
+    if (tight && s !== cur) val.hidden = true;
+    col.title = hour(s[0]) + "–" + hour(s[0] + 3600) + ": " + fmt(c) + " senti/kWh";
+    col.append(bar, val);
+    cols.appendChild(col);
+    const h = document.createElement("span");
+    const curI = list.indexOf(cur);
+    const show = !tight || s === cur || (i % 3 === 0 && (curI < 0 || Math.abs(i - curI) > 1));
+    h.textContent = show ? String(+hour(s[0])) : "";
+    if (s === cur) h.className = "cur";
+    hrs.appendChild(h);
+  });
+}
+
+// Hourly price = average of the hour's 15-minute prices, as Elering's hourly view shows it.
+function toHours(q) {
+  const m = new Map();
+  q.forEach(([t, p]) => { const h = t - (t % 3600); (m.get(h) || m.set(h, []).get(h)).push(p); });
+  return [...m].sort((a, b) => a[0] - b[0]).map(([h, ps]) => [h, ps.reduce((a, b) => a + b, 0) / ps.length]);
+}
+
+document.getElementById("tToday").onclick = () => { showTomorrow = false; render(); };
+document.getElementById("tTomorrow").onclick = () => { showTomorrow = true; pickedOn = dayKey(Date.now() / 1000); render(); };
+let resizeT;
+addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(render, 150); });
+
+
+// Reload the data every 15 minutes and on return to the page, so a screen left on overnight picks up the daily update.
+function load() {
+  fetch("prices.json", { cache: "no-store" }).then(r => r.json()).then(d => {
+    hours = toHours(d.ee);
+    window.renderH?.();
+    render();
+  }).catch(() => {
+    if (!hours.length) document.getElementById("nowPrice").textContent = "Hindu ei saanud laadida";
+  });
+}
+load();
+setInterval(render, 60000);
+setInterval(load, 15 * 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });
+window.renderE = render;
+window.priceNow = () => { const t = Date.now() / 1000, c = hours.find(s => s[0] <= t && t < s[0] + 3600); return c ? cents(c[1]) : null; };
+})();
+</script>
+<script>(() => {
+const TZ = "Europe/Tallinn";
+const dayKey = t => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(t * 1000));
+const hourOf = t => +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date(t * 1000));
+const two = h => String(h % 24).padStart(2, "0");
+const longDate = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(new Date(t * 1000));
+const shortDate = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, day: "numeric", month: "numeric" }).format(new Date(t * 1000));
+const wide = matchMedia("(orientation: landscape) and (min-width: 700px)");
+const num = (v, dec = 1) => v.toLocaleString("et-EE", { maximumFractionDigits: dec });
+const round = v => Math.round(v + 1e-9);
+
+// --- Weather icons drawn from MET Norway symbol codes (clearsky_day, lightrainshowers_night, heavysnowandthunder, fog ...)
+const SUN = (x, y, r) => `<g stroke="var(--sun)" stroke-width="3" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map(a => {
+  const c = Math.cos(a * Math.PI / 180), s = Math.sin(a * Math.PI / 180);
+  return `<line x1="${x + c * (r + 4)}" y1="${y + s * (r + 4)}" x2="${x + c * (r + 9)}" y2="${y + s * (r + 9)}"/>`; }).join("")}</g><circle cx="${x}" cy="${y}" r="${r}" fill="var(--sun)"/>`;
+const MOON = (x, y, r) => `<path d="M${x + r * .35} ${y - r} A${r} ${r} 0 1 0 ${x + r} ${y + r * .45} A${r * .8} ${r * .8} 0 0 1 ${x + r * .35} ${y - r}Z" fill="var(--moon)"/>`;
+const CLOUD = (dx, dy, k, fill) => `<path transform="translate(${dx} ${dy}) scale(${k})" d="M14 44h34a10 10 0 0 0 1-20 14 14 0 0 0-27-3 11 11 0 0 0-8 23z" fill="${fill}" stroke="var(--cloud-edge)" stroke-width="${2 / k}" stroke-linejoin="round"/>`;
+const DROP = (x, y) => `<path d="M${x} ${y}l-3 7a3.2 3.2 0 0 0 6 0z" fill="var(--rain)"/>`;
+const FLAKE = (x, y) => `<g stroke="var(--rain)" stroke-width="2" stroke-linecap="round"><line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}"/><line x1="${x - 2}" y1="${y - 3.5}" x2="${x + 2}" y2="${y + 3.5}"/><line x1="${x + 2}" y1="${y - 3.5}" x2="${x - 2}" y2="${y + 3.5}"/></g>`;
+const BOLT = `<path d="M34 44l-6 10h5l-3 9 9-12h-5l4-7z" fill="var(--bolt)"/>`;
+const FOG = `<g stroke="var(--cloud-dark)" stroke-width="3" stroke-linecap="round"><line x1="14" y1="50" x2="50" y2="50"/><line x1="18" y1="56" x2="46" y2="56"/></g>`;
+
+function icon(code) {
+  if (!code) return "";
+  const [base, tod] = code.split("_");
+  const night = tod === "night" || tod === "polartwilight";
+  const body = night ? MOON : SUN;
+  let svg = "";
+  const precip = /rain|sleet|snow/.test(base), showers = /showers/.test(base), thunder = /thunder/.test(base);
+  if (base === "clearsky") svg = night ? MOON(32, 32, 16) : SUN(32, 32, 11);
+  else if (base === "fair") svg = (night ? MOON(26, 24, 13) : SUN(25, 23, 9)) + CLOUD(14, 14, .75, "var(--cloud)");
+  else if (base === "partlycloudy") svg = (night ? MOON(24, 20, 12) : SUN(23, 20, 9)) + CLOUD(4, 6, .95, "var(--cloud)");
+  else if (base === "cloudy") svg = CLOUD(0, 4, 1, "var(--cloud)");
+  else if (base === "fog") svg = CLOUD(0, -4, 1, "var(--cloud)") + FOG;
+  else if (precip) {
+    svg = (showers ? (night ? MOON(22, 16, 11) : SUN(21, 16, 8)) : "") + CLOUD(0, -4, 1, showers ? "var(--cloud)" : "var(--cloud-dark)");
+    const n = /^heavy/.test(base) ? 3 : /^light/.test(base) ? 1 : 2;
+    const xs = [[32], [26, 38], [20, 32, 44]][n - 1];
+    xs.forEach((x, i) => {
+      const y = 46 + (i % 2) * 5;
+      if (/sleet/.test(base)) svg += i % 2 ? FLAKE(x, y + 3) : DROP(x, y);
+      else if (/snow/.test(base)) svg += FLAKE(x, y + 3);
+      else svg += DROP(x, y);
+    });
+    if (thunder) svg += BOLT;
+  } else svg = CLOUD(0, 4, 1, "var(--cloud)");
+  return `<svg viewBox="0 0 64 64" width="100%" height="100%" role="img" aria-label="${code}">${svg}</svg>`;
+}
+// Arrow points where the wind blows to, like Yr.
+const arrow = from => `<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(${(from + 180) % 360} 12 12)" fill="none" stroke="var(--wind)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="4"/><path d="M7 9l5-5 5 5"/></g></svg>`;
+const tempEl = t => `<span class="${t < 0 ? "cold" : "warm"}">${round(t)}°</span>`;
+const rainText = (a, b) => b == null || b <= 0 ? "" : a === b ? num(a) : num(a) + "–" + num(b);
+
+let steps = [], showTomorrow = false, pickedOn = "";
+
+function render() {
+  const nowT = Date.now() / 1000;
+  const today = dayKey(nowT), tomorrow = dayKey(nowT + 86400);
+  if (showTomorrow && pickedOn !== today) showTomorrow = false;
+  document.getElementById("wToday").setAttribute("aria-pressed", String(!showTomorrow));
+  document.getElementById("wTomorrow").setAttribute("aria-pressed", String(showTomorrow));
+
+  // Now: the latest hourly step that has started.
+  document.getElementById("wNowDate").textContent = ", " + longDate(nowT);
+  const cur = steps.filter(s => s[0] <= nowT && s[5]).pop();
+  if (cur) {
+    document.getElementById("wNowIco").innerHTML = icon(cur[5]);
+    document.getElementById("wNowTemp").innerHTML = tempEl(cur[1]);
+    const rain = cur[6] > 0 ? `<span style="color:var(--rain)">Vihma ${num(cur[6])} mm</span>` : "";
+    document.getElementById("wNowExtra").innerHTML =
+      `<span style="display:inline-flex;align-items:center;gap:6px">Tuul ${round(cur[2])} (${round(cur[3])}) m/s ${arrow(cur[4])}</span>${rain}`;
+  } else {
+    document.getElementById("wNowTemp").textContent = "Andmed puuduvad";
+  }
+
+  document.getElementById("wToday").textContent = "Täna " + shortDate(nowT);
+  document.getElementById("wTomorrow").textContent = "Homme " + shortDate(nowT + 86400);
+  const shown = wide.matches ? [false, true] : [showTomorrow];
+  document.getElementById("wDays").innerHTML = shown.map(t => dayHtml(t, nowT)).join("");
+}
+
+// The day in four 6-hour blocks; today's current block starts at the next full hour, as on Yr.
+function dayHtml(isTomorrow, nowT) {
+  const key = dayKey(nowT + (isTomorrow ? 86400 : 0));
+  const inDay = steps.filter(s => dayKey(s[0]) === key && s[7]);
+  const rows = [];
+  [0, 6, 12, 18].forEach(b => {
+    const first = inDay.find(s => hourOf(s[0]) >= b && hourOf(s[0]) < b + 6 && (isTomorrow || s[0] > nowT));
+    if (first) rows.push({ s: first, from: hourOf(first[0]), to: b + 6 });
+  });
+  const title = `<div class="daytitle">${isTomorrow ? "Homme" : "Täna"}, ${longDate(nowT + (isTomorrow ? 86400 : 0))}</div>`;
+  if (!rows.length) return `<section class="day">${title}<p class="note">Selle päeva ennustus puudub.</p></section>`;
+  return `<section class="day">${title}
+    <div class="row head"><span>Kell</span><span></span><span>Temp.</span><span>Vihm mm</span><span class="w">Tuul m/s</span></div>` +
+    rows.map(({ s, from, to }) => `<div class="row">
+      <span class="when">${two(from)}–${two(to)}</span>
+      <span class="ico">${icon(s[7])}</span>
+      <span class="t">${tempEl(s[1])}</span>
+      <span class="p">${rainText(s[8], s[9])}</span>
+      <span class="w">${round(s[2])} (${round(s[3])}) ${arrow(s[4])}</span>
+    </div>`).join("") + "</section>";
+}
+
+document.getElementById("wToday").onclick = () => { showTomorrow = false; render(); };
+document.getElementById("wTomorrow").onclick = () => { showTomorrow = true; pickedOn = dayKey(Date.now() / 1000); render(); };
+
+
+// Reload the data every 15 minutes and on return to the page, so a screen left on picks up each 3-hour update.
+function load() {
+  fetch("weather.json", { cache: "no-store" }).then(r => r.json()).then(d => {
+    steps = d.ts;
+    window.renderH?.();
+    render();
+  }).catch(() => {
+    if (!steps.length) document.getElementById("wNowTemp").textContent = "Ilma ei saanud laadida";
+  });
+}
+load();
+wide.addEventListener("change", render);
+setInterval(render, 60000);
+setInterval(load, 15 * 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });
+window.renderW = render;
+window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s[0] <= t && s[5]).pop(); return c ? { temp: c[1], code: c[5] } : null; };
+})();
+</script>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const views = { elekter: document.getElementById("vE"), ilm: document.getElementById("vW"), avaleht: document.getElementById("vH") };
+  const sheets = { elekter: document.getElementById("cssE"), ilm: document.getElementById("cssW"), avaleht: document.getElementById("cssH") };
+  const sw = document.getElementById("switcher");
+  const TZ = "Europe/Tallinn";
+  let view = "avaleht", idleT;
+
+  // Three views on one page; only the active view's stylesheet is on, so the designs never collide.
+  function show(v, user) {
+    view = v in views ? v : "avaleht";
+    for (const k in views) { views[k].hidden = k !== view; sheets[k].disabled = k !== view; }
+    root.classList.toggle("graph", view === "elekter");
+    const fs = document.getElementById("fs");
+    sw.hidden = view === "avaleht";
+    if (view === "avaleht") { document.getElementById("hFoot").appendChild(fs); renderH(); }
+    else {
+      document.getElementById(view === "ilm" ? "wNow" : "now").appendChild(sw);
+      document.getElementById(view === "ilm" ? "wFoot" : "foot").appendChild(fs);
+      requestAnimationFrame(() => { (view === "ilm" ? window.renderW : window.renderE)?.(); });
+    }
+    if (user) { try { history.replaceState(null, "", view === "avaleht" ? location.pathname + location.search : "#" + view); } catch {} }
+    armIdle();
+  }
+
+  // Back to the dark home screen after 2 minutes without a touch.
+  function armIdle() {
+    clearTimeout(idleT);
+    if (view !== "avaleht") idleT = setTimeout(() => show("avaleht", true), 2 * 60000);
+  }
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach(e => addEventListener(e, armIdle, { passive: true }));
+
+  const WORDS = { clearsky: "selge", fair: "peamiselt selge", partlycloudy: "vahelduv pilvisus", cloudy: "pilves", fog: "udu",
+    lightrain: "nõrk vihm", rain: "vihm", heavyrain: "tugev vihm", lightrainshowers: "nõrk hoovihm", rainshowers: "hoovihm", heavyrainshowers: "tugev hoovihm",
+    lightsleet: "nõrk lörts", sleet: "lörts", heavysleet: "tugev lörts", lightsleetshowers: "lörtsihood", sleetshowers: "lörtsihood", heavysleetshowers: "tugevad lörtsihood",
+    lightsnow: "nõrk lumesadu", snow: "lumesadu", heavysnow: "tugev lumesadu", lightsnowshowers: "lumehood", snowshowers: "lumehood", heavysnowshowers: "tugevad lumehood" };
+  const word = code => { const b = code.split("_")[0], th = /andthunder$/.test(b), w = WORDS[b.replace(/andthunder$/, "")] || ""; return th ? (w ? w + ", äike" : "äike") : w; };
+
+  function renderH() {
+    const now = new Date();
+    const hh = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(now);
+    root.classList.toggle("night", hh >= 22 || hh < 7);
+    if (view !== "avaleht") return;
+    document.getElementById("hClock").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+    document.getElementById("hDate").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(now);
+    const c = window.priceNow?.();
+    document.getElementById("hPrice").textContent = c == null ? "–" : c.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById("hDot").className = "dot" + (c == null ? "" : c < 5 ? " cheap" : c < 20 ? " mid" : " high");
+    const w = window.weatherNow?.();
+    document.getElementById("hTemp").textContent = w ? Math.round(w.temp + 1e-9) + "°" : "–";
+    document.getElementById("hWord").textContent = w ? word(w.code) : "";
+  }
+  window.renderH = renderH;
+  setInterval(renderH, 15000);
+
+  document.getElementById("swBtn").onclick = () => show("avaleht", true);
+  document.getElementById("hE").onclick = () => show("elekter", true);
+  document.getElementById("hW").onclick = () => show("ilm", true);
+  const start = location.hash.slice(1);
+  show(start === "ilm" || start === "elekter" ? start : "avaleht", false);
+  addEventListener("hashchange", () => { const h = location.hash.slice(1); show(h === "ilm" || h === "elekter" ? h : "avaleht", false); });
+
+  // Fullscreen only where the browser allows it (not iPhone); the icon stays hidden elsewhere.
+  const fsBtn = document.getElementById("fs");
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const ICON = d => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+  const ENTER = ICON("M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"), EXIT = ICON("M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5");
+  fsBtn.innerHTML = ENTER;
+  if ((document.fullscreenEnabled || document.webkitFullscreenEnabled) && (root.requestFullscreen || root.webkitRequestFullscreen)) {
+    fsBtn.hidden = false;
+    fsBtn.onclick = () => {
+      try {
+        const p = fsEl() ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+                         : (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+        if (p && p.catch) p.catch(() => { fsBtn.hidden = true; });
+      } catch { fsBtn.hidden = true; }
+    };
+    const onFs = () => {
+      const on = !!fsEl(), name = on ? "Välju täisekraanist" : "Täisekraan";
+      fsBtn.innerHTML = on ? EXIT : ENTER;
+      fsBtn.setAttribute("aria-label", name); fsBtn.title = name;
+      (view === "ilm" ? window.renderW : view === "elekter" ? window.renderE : renderH)?.();
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+  }
+
+  // Keep the screen on while the page is visible, if the browser lets us; ask again after a tap or on return.
+  let lock = null;
+  async function keepAwake() {
+    if (lock || !("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+    try { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => { lock = null; }); } catch {}
+  }
+  keepAwake();
+  document.addEventListener("visibilitychange", keepAwake);
+  document.addEventListener("click", keepAwake);
+})();
+</script>
+</body>
+</html>
