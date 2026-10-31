@@ -614,15 +614,26 @@ document.getElementById("wToday").onclick = () => { showTomorrow = false; render
 document.getElementById("wTomorrow").onclick = () => { showTomorrow = true; pickedOn = dayKey(Date.now() / 1000); render(); };
 
 
-// Reload the data every 15 minutes and on return to the page, so a screen left on picks up each 3-hour update.
+// The page asks MET Norway itself, so the forecast is fresh however often the GitHub job runs;
+// weather.json (saved by the job) is the fallback. Reloads every 15 minutes and on return to the page.
+const MET = "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=57.7328&lon=26.9286&altitude=142";
+const fromMet = j => j.properties.timeseries.map(t => {
+  const i = t.data.instant.details, n1 = t.data.next_1_hours, n6 = t.data.next_6_hours;
+  return [Date.parse(t.time) / 1000, i.air_temperature, i.wind_speed, i.wind_speed_of_gust, i.wind_from_direction,
+    n1 ? n1.summary.symbol_code : null, n1 ? n1.details.precipitation_amount : null,
+    n6 ? n6.summary.symbol_code : null, n6 ? n6.details.precipitation_amount_min : null, n6 ? n6.details.precipitation_amount_max : null];
+});
 function load() {
-  fetch("weather.json", { cache: "no-store" }).then(r => r.json()).then(d => {
-    steps = d.ts;
-    window.renderH?.();
-    render();
-  }).catch(() => {
-    if (!steps.length) document.getElementById("wNowTemp").textContent = "Ilma ei saanud laadida";
-  });
+  fetch(MET).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(fromMet)
+    .catch(() => fetch("weather.json", { cache: "no-store" }).then(r => r.json()).then(d => d.ts))
+    .then(ts => {
+      if (!ts || ts.length < 40) throw new Error("no forecast");
+      steps = ts;
+      window.renderH?.();
+      render();
+    }).catch(() => {
+      if (!steps.length) document.getElementById("wNowTemp").textContent = "Ilma ei saanud laadida";
+    });
 }
 load();
 wide.addEventListener("change", render);
