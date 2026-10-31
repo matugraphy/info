@@ -75,6 +75,10 @@ footer { color: var(--muted); font-size: 16px; }
 .col { position: relative; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 5px 5px 0 0; }
 .bar.cur { outline: 3px solid var(--fg); outline-offset: 2px; }
+.col { cursor: pointer; }
+.bar.picked { outline: 3px dashed var(--fg); outline-offset: 2px; }
+.val.picked { left: 50%; right: auto; transform: translateX(-50%); white-space: nowrap; font-size: max(var(--vf, 16px), 18px); z-index: 2; }
+.val.picked.first { left: -2px; transform: none; } .val.picked.last { left: auto; right: -2px; transform: none; }
 .col.past { opacity: .6; }
 .val { position: absolute; left: -6px; right: -6px; text-align: center; font-weight: 700; font-size: var(--vf, 16px); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .limit { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--muted); z-index: 1; pointer-events: none; }
@@ -135,7 +139,9 @@ body { margin: 0; background: var(--hbg); color: var(--hfg); font-family: "Atkin
   .vals { font-size: clamp(24px, 9.5vh, 46px); }
 }
 @media (orientation: portrait) {
-  .home { grid-template-columns: 1fr; align-content: space-between; padding-block: 32px 16px; }
+  .home { grid-template-columns: 1fr; align-content: space-evenly; padding-block: 16px; }
+  .hleft { justify-self: center; align-items: center; text-align: center; }
+  .vals { text-align: left; }
   .clock { font-size: clamp(64px, 27vw, 128px); }
   .hdate { font-size: 22px; } .vals { font-size: 32px; }
   .hright button { font-size: 30px; padding: 26px 10px; }
@@ -379,7 +385,7 @@ const fmt = c => c.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFr
 const level = c => c < 5 ? "cheap" : c < 20 ? "mid" : "high";
 const WORD = { cheap: "ODAV", mid: "KESKMINE", high: "KALLIS" };
 
-let hours = [], showTomorrow = false, pickedOn = "";
+let hours = [], showTomorrow = false, pickedOn = "", picked = null;
 
 function render() {
   const nowT = Date.now() / 1000;
@@ -441,23 +447,29 @@ function drawChart(list, cur, nowT) {
   chart.style.setProperty("--vf", Math.round(Math.min(20, Math.max(11, (colW + 8) / (chars * 0.58)))) + "px");
   chart.style.setProperty("--hf", Math.round(Math.min(26, Math.max(13, colW * (tight ? 1.3 : 0.62)))) + "px");
   cols.textContent = ""; hrs.textContent = "";
+  const curI = list.indexOf(cur), pickI = list.findIndex(x => x[0] === picked);
   list.forEach((s, i) => {
     const c = vals[i], col = document.createElement("div"), bar = document.createElement("div"), val = document.createElement("div");
     col.className = "col";
-    if (s !== cur && s[0] + 3600 <= nowT) col.classList.add("past");
-    bar.className = "bar " + level(c) + "-c" + (s === cur ? " cur" : "");
+    if (s !== cur && s[0] !== picked && s[0] + 3600 <= nowT) col.classList.add("past");
+    const isPicked = s[0] === picked;
+    bar.className = "bar " + level(c) + "-c" + (s === cur ? " cur" : isPicked ? " picked" : "");
     bar.style.height = Math.max(1, pct(c)) + "%";
     val.className = "val"; val.style.bottom = "calc(" + Math.max(1, pct(c)) + "% + 4px)";
-    val.textContent = label(c);
-    if (tight && s !== cur) val.hidden = true;
+    val.textContent = isPicked ? fmt(c) : label(c);
+    if (isPicked) val.classList.add("picked", ...(i < 2 ? ["first"] : i > list.length - 3 ? ["last"] : []));
+    // The tapped price is wider than a bar, so its neighbours' labels step aside.
+    if ((tight && s !== cur && !isPicked) || (pickI >= 0 && Math.abs(i - pickI) === 1)) val.hidden = true;
+    // Tap a bar to see its exact price; tap again to hide it.
+    col.onclick = () => { picked = isPicked ? null : s[0]; render(); };
     col.title = hour(s[0]) + "–" + hour(s[0] + 3600) + ": " + fmt(c) + " senti/kWh";
     col.append(bar, val);
     cols.appendChild(col);
     const h = document.createElement("span");
-    const curI = list.indexOf(cur);
-    const show = !tight || s === cur || (i % 3 === 0 && (curI < 0 || Math.abs(i - curI) > 1));
+    const near = k => k >= 0 && Math.abs(i - k) <= 1;
+    const show = !tight || s === cur || isPicked || (i % 3 === 0 && !near(curI) && !near(pickI));
     h.textContent = show ? String(+hour(s[0])) : "";
-    if (s === cur) h.className = "cur";
+    if (s === cur || isPicked) h.className = "cur";
     hrs.appendChild(h);
   });
 }
@@ -469,8 +481,8 @@ function toHours(q) {
   return [...m].sort((a, b) => a[0] - b[0]).map(([h, ps]) => [h, ps.reduce((a, b) => a + b, 0) / ps.length]);
 }
 
-document.getElementById("tToday").onclick = () => { showTomorrow = false; render(); };
-document.getElementById("tTomorrow").onclick = () => { showTomorrow = true; pickedOn = dayKey(Date.now() / 1000); render(); };
+document.getElementById("tToday").onclick = () => { showTomorrow = false; picked = null; render(); };
+document.getElementById("tTomorrow").onclick = () => { showTomorrow = true; picked = null; pickedOn = dayKey(Date.now() / 1000); render(); };
 let resizeT;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(render, 150); });
 
