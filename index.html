@@ -197,6 +197,15 @@ button:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
 .row { display: grid; grid-template-columns: 4.6em 64px 3.2em 1fr auto; align-items: center; gap: 8px;
   padding: 10px 2px; border-bottom: 2px solid var(--line); font-variant-numeric: tabular-nums; }
 .row:last-child { border-bottom: 0; }
+.row.blk[role=button] { cursor: pointer; }
+.row.blk:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; border-radius: 8px; }
+.chev { margin-left: .3em; font-size: .8em; color: var(--muted); }
+.row.open { border-bottom-color: transparent; }
+.row.sub { background: var(--bg); border-bottom: 1px solid var(--line); border-radius: 0; padding-block: 2px !important; font-size: .85em; }
+.row.sub .when { font-size: 1em; padding-left: .6em; }
+.row.sub .ico { width: 36px !important; height: 36px !important; }
+.row.sub .t, .row.sub .p, .row.sub .w { font-size: 1em !important; }
+.row.sub .arrow { width: 20px; height: 20px; }
 .row.head { padding: 6px 2px 2px; border: 0; font-size: 15px; color: var(--muted); }
 .row .when { color: var(--muted); font-size: 22px; }
 .row .ico { width: 56px; height: 56px; }
@@ -287,7 +296,9 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   #vW { height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   #vW .days { flex: 1; min-height: 0; }
   #vW .day { display: flex; flex-direction: column; min-height: 0; }
-  #vW .row:not(.head) { flex: 1 1 auto; max-height: 22%; }
+  #vW .row.blk { flex: 1 1 auto; max-height: 22%; }
+  #vW .day { overflow-y: auto; }
+  #vW .day:has(.row.open) .row.blk { flex: 0 0 auto; }
 }
 /* Sideways the current box is one line: it never wraps, the text scales down with the screen width instead. */
 @media (orientation: landscape) and (max-height: 700px) {
@@ -595,21 +606,42 @@ function dayHtml(isTomorrow, nowT) {
     const inBlock = inDay.filter(s => hourOf(s[0]) >= b && hourOf(s[0]) < b + 6);
     // Today: start at the next full hour like Yr; in the day's last hour fall back to the hour under way.
     const first = isTomorrow ? inBlock[0] : inBlock.find(s => s[0] > nowT) || inBlock.find(s => s[0] + 3600 > nowT);
-    if (first) rows.push({ s: first, from: hourOf(first[0]), to: b + 6 });
+    if (first) rows.push({ s: first, from: hourOf(first[0]), to: b + 6, id: key + "-" + b,
+      hrs: inBlock.filter(s => s[0] >= first[0] && s[5]) });
   });
   const title = `<div class="daytitle">${isTomorrow ? "Homme" : "Täna"}, ${longDate(nowT + (isTomorrow ? 86400 : 0))}</div>`;
   if (!rows.length) return `<section class="day">${title}<p class="note">Selle päeva ennustus puudub.</p></section>`;
   return `<section class="day">${title}
     <div class="row head"><span>Kell</span><span></span><span>Temp.</span><span>Vihm mm</span><span class="w">Tuul m/s</span></div>` +
-    rows.map(({ s, from, to }) => `<div class="row">
-      <span class="when">${two(from)}–${two(to)}</span>
+    rows.map(({ s, from, to, id, hrs }) => {
+      const open = opened.has(id) && hrs.length > 0;
+      return `<div class="row blk${open ? " open" : ""}" data-id="${id}"${hrs.length ? ' role="button" tabindex="0" aria-expanded="' + open + '"' : ""}>
+      <span class="when">${two(from)}–${two(to)}${hrs.length ? '<span class="chev" aria-hidden="true">' + (open ? "▴" : "▾") + "</span>" : ""}</span>
       <span class="ico">${icon(s[7])}</span>
       <span class="t">${tempEl(s[1])}</span>
       <span class="p">${rainText(s[8], s[9])}</span>
       <span class="w">${round(s[2])} (${round(s[3])}) ${arrow(s[4])}</span>
-    </div>`).join("") + "</section>";
+    </div>` + (open ? hrs.map(h => `<div class="row sub">
+      <span class="when">${two(hourOf(h[0]))}</span>
+      <span class="ico">${icon(h[5])}</span>
+      <span class="t">${tempEl(h[1])}</span>
+      <span class="p">${h[6] > 0 ? num(h[6]) : ""}</span>
+      <span class="w">${round(h[2])} (${round(h[3])}) ${arrow(h[4])}</span>
+    </div>`).join("") : "");
+    }).join("") + "</section>";
 }
 
+// Tap a 6-hour row to see it hour by hour; tap again to close it.
+const opened = new Set();
+const toggle = e => {
+  const row = e.target.closest(".row.blk[role=button]");
+  if (!row || (e.type === "keydown" && e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  opened.has(row.dataset.id) ? opened.delete(row.dataset.id) : opened.add(row.dataset.id);
+  render();
+};
+document.getElementById("wDays").addEventListener("click", toggle);
+document.getElementById("wDays").addEventListener("keydown", toggle);
 document.getElementById("wToday").onclick = () => { showTomorrow = false; render(); };
 document.getElementById("wTomorrow").onclick = () => { showTomorrow = true; pickedOn = dayKey(Date.now() / 1000); render(); };
 
