@@ -27,8 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Fetch prices and forecast
-        run: python3 scripts/fetch.py
+        run: python scripts/fetch.py
 
       - name: Save new data
         run: |
@@ -37,11 +41,31 @@ jobs:
           git add prices.json weather.json
           git diff --cached --quiet || (git commit -m "Update data" && git push)
 
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp -r index.html manifest.webmanifest icons prices.json weather.json _site/
+
+      # Photos come from a Google Drive folder, are encrypted with the photo password and go only into the
+      # published site, never into the repository. Skipped until the three secrets are set.
+      - name: Encrypt photos
+        env:
+          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
+          PHOTOS_FOLDER_ID: ${{ secrets.PHOTOS_FOLDER_ID }}
+          PHOTOS_PASSWORD: ${{ secrets.PHOTOS_PASSWORD }}
+        run: |
+          if [ -n "$PHOTOS_PASSWORD" ]; then
+            pip install --quiet pillow pillow-heif cryptography google-auth requests
+            python scripts/photos.py _site
+          else
+            echo "Photos not set up yet; skipping."
+          fi
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - id: deploy
         uses: actions/deploy-pages@v4

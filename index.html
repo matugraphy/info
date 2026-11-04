@@ -147,6 +147,28 @@ body { margin: 0; background: var(--hbg); color: var(--hfg); font-family: "Atkin
   .hright button { font-size: 30px; padding: 26px 10px; }
 }
 </style>
+<style id="cssP">
+/* Slideshow: photos fill a black screen, whole photo visible; clock and price small in a corner. */
+:root { color-scheme: dark; --fg: #e6e9eb; --muted: #9aa2a7; --line: #3a4044; }
+body { margin: 0; background: #000; color: var(--fg); font-family: "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif; }
+#vP { position: fixed; inset: 0; background: #000; overflow: hidden; cursor: pointer; }
+#vP img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 1.6s ease; }
+#vP img.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { #vP img { transition: none; } }
+.pinfo { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: baseline; gap: 18px; font-weight: 700; font-size: clamp(22px, 5vh, 34px); font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 6px #000, 0 0 2px #000; opacity: .85; }
+.pinfo .u { font-size: .6em; font-weight: 400; }
+.pdot { display: inline-block; width: .45em; height: .45em; border-radius: 50%; margin-left: .3em; vertical-align: middle; }
+.pdot.cheap { background: #2e9d4f; } .pdot.mid { background: #d1b13a; } .pdot.high { background: #d14b3f; }
+.plock { position: absolute; inset: 0; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; cursor: default; }
+.plock p { margin: 0; font-size: 22px; color: var(--muted); }
+.plock input { font: inherit; font-size: 26px; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--line); background: #111; color: var(--fg); text-align: center; }
+.plock button { font: 700 24px "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif; letter-spacing: .05em; padding: 14px; border-radius: 14px;
+  border: 3px solid var(--fg); background: transparent; color: var(--fg); cursor: pointer; }
+.plock .pmsg { color: #e7a39b; min-height: 1.4em; }
+.pempty { position: absolute; inset: 0; display: grid; place-content: center; font-size: 22px; color: var(--muted); padding: 24px; text-align: center; }
+</style>
 <style id="cssW">
 /* Same frame as the electricity page: the weather now on top, Täna/Homme, then the day in four 6-hour rows like Yr. */
 :root {
@@ -377,9 +399,22 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
     <div class="hright">
       <button id="hE" type="button">ELEKTER</button>
       <button id="hW" type="button">ILM</button>
+      <button id="hP" type="button" hidden>PILDID</button>
     </div>
   </div>
   <div class="hfoot" id="hFoot"></div>
+</main>
+
+<main id="vP" hidden>
+  <img id="pA" alt=""><img id="pB" alt="">
+  <div class="pinfo" id="pInfo"><span id="pClock"></span><span id="pPrice"></span></div>
+  <form class="plock" id="pLock" hidden>
+    <p>Piltide vaatamiseks sisesta parool.</p>
+    <input id="pPass" type="password" autocomplete="current-password" aria-label="Parool">
+    <button type="submit">AVA</button>
+    <p class="pmsg" id="pMsg"></p>
+  </form>
+  <p class="pempty" id="pEmpty" hidden>Pilte veel pole.</p>
 </main>
 
 <div class="switcher" id="switcher"><button id="swBtn" type="button" aria-label="Avaleht">AVALEHT</button></div>
@@ -677,11 +712,99 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
 })();
 </script>
 
+<script>(() => {
+// Photos are AES-GCM encrypted by the GitHub job (scripts/photos.py); the key comes from the password,
+// which this phone remembers after it is typed once.
+const TZ = "Europe/Tallinn", EVERY = 15000;
+const imgs = [document.getElementById("pA"), document.getElementById("pB")];
+const lock = document.getElementById("pLock"), pass = document.getElementById("pPass"), msg = document.getElementById("pMsg"), empty = document.getElementById("pEmpty");
+let meta = null, key = null, keySalt = "", list = [], order = [], at = 0, front = 0, timer = null, auto = false, urls = [];
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const stored = () => { try { return localStorage.getItem("photoPass") || ""; } catch { return ""; } };
+
+async function getMeta() {
+  try { const r = await fetch("photos/meta.json", { cache: "no-store" }); meta = r.ok ? await r.json() : null; } catch { meta = null; }
+  document.getElementById("hP").hidden = !meta;
+  return meta;
+}
+async function open(buf) {
+  const b = new Uint8Array(buf);
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: b.slice(0, 12) }, key, b.slice(12));
+}
+async function unlock(pw) {
+  if (!meta || !pw || !crypto.subtle) return false;
+  try {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(meta.salt), iterations: meta.iterations, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const r = await fetch("photos/list.bin", { cache: "no-store" });
+    list = JSON.parse(new TextDecoder().decode(await open(await r.arrayBuffer())));
+    keySalt = meta.salt;
+    return true;
+  } catch { key = null; list = []; return false; }
+}
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+async function showNext() {
+  if (auto && window.isNight?.()) { window.showView?.("avaleht"); return; }
+  if (!order.length) return;
+  const name = order[at++ % order.length];
+  if (at % order.length === 0) shuffle(order);
+  try {
+    const r = await fetch("photos/" + name, { cache: "no-store" });
+    const url = URL.createObjectURL(new Blob([await open(await r.arrayBuffer())], { type: "image/jpeg" }));
+    const back = imgs[1 - front];
+    back.onload = () => { back.classList.add("on"); imgs[front].classList.remove("on"); front = 1 - front; };
+    back.src = url;
+    urls.push(url); while (urls.length > 3) URL.revokeObjectURL(urls.shift());
+  } catch {}
+}
+function info() {
+  const now = new Date();
+  document.getElementById("pClock").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+  const c = window.priceNow?.();
+  document.getElementById("pPrice").innerHTML = c == null ? "" :
+    c.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' <span class="u">s/kWh</span><span class="pdot ' + (c < 5 ? "cheap" : c < 20 ? "mid" : "high") + '"></span>';
+}
+async function begin() {
+  lock.hidden = true;
+  empty.hidden = list.length > 0;
+  order = shuffle(list.slice()); at = 0;
+  info(); await showNext();
+  clearInterval(timer);
+  timer = setInterval(() => { info(); showNext(); }, EVERY);
+}
+
+window.slides = {
+  unlocked: () => !!key && list.length > 0,
+  async start(isAuto) {
+    auto = isAuto;
+    await getMeta();
+    if (!meta) { lock.hidden = true; empty.hidden = false; return; }
+    // A new publish brings a new salt, so the key is rebuilt from the remembered password.
+    if (!key || keySalt !== meta.salt) await unlock(stored());
+    if (key) begin();
+    else { lock.hidden = false; msg.textContent = ""; pass.value = ""; setTimeout(() => pass.focus(), 50); }
+  },
+  stop() { clearInterval(timer); timer = null; imgs.forEach(i => i.classList.remove("on")); }
+};
+lock.addEventListener("submit", async e => {
+  e.preventDefault();
+  msg.textContent = "Kontrollin…";
+  if (await unlock(pass.value)) { try { localStorage.setItem("photoPass", pass.value); } catch {} begin(); }
+  else msg.textContent = "Vale parool. Proovi uuesti.";
+});
+lock.addEventListener("click", e => e.stopPropagation());
+document.getElementById("vP").addEventListener("click", () => { if (lock.hidden) window.showView?.("avaleht"); });
+getMeta().then(m => { if (m && stored()) unlock(stored()); });
+})();
+</script>
+
 <script>
 (() => {
   const root = document.documentElement;
-  const views = { elekter: document.getElementById("vE"), ilm: document.getElementById("vW"), avaleht: document.getElementById("vH") };
-  const sheets = { elekter: document.getElementById("cssE"), ilm: document.getElementById("cssW"), avaleht: document.getElementById("cssH") };
+  const views = { elekter: document.getElementById("vE"), ilm: document.getElementById("vW"), avaleht: document.getElementById("vH"), pildid: document.getElementById("vP") };
+  const sheets = { elekter: document.getElementById("cssE"), ilm: document.getElementById("cssW"), avaleht: document.getElementById("cssH"), pildid: document.getElementById("cssP") };
   const sw = document.getElementById("switcher");
   const TZ = "Europe/Tallinn";
   let view = "avaleht", idleT;
@@ -692,9 +815,12 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
     for (const k in views) { views[k].hidden = k !== view; sheets[k].disabled = k !== view; }
     root.classList.toggle("graph", view === "elekter");
     const fs = document.getElementById("fs");
-    sw.hidden = view === "avaleht";
+    sw.hidden = view === "avaleht" || view === "pildid";
+    // The slideshow counts as a screensaver only when it started by itself, not from the PILDID button.
+    if (view === "pildid") window.slides?.start(!user);
+    else window.slides?.stop();
     if (view === "avaleht") { document.getElementById("hFoot").appendChild(fs); renderH(); }
-    else {
+    else if (view !== "pildid") {
       document.getElementById(view === "ilm" ? "wNow" : "now").appendChild(sw);
       document.getElementById(view === "ilm" ? "wFoot" : "foot").appendChild(fs);
       requestAnimationFrame(() => { (view === "ilm" ? window.renderW : window.renderE)?.(); });
@@ -703,11 +829,16 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
     armIdle();
   }
 
-  // Back to the dark home screen after 2 minutes without a touch.
+  // Back to the dark home screen after 2 minutes without a touch; on the home screen, the photos start
+  // as a screensaver after 3 more minutes (not at night, and only once this phone has the password).
+  const isNight = () => { const h = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()); return h >= 22 || h < 7; };
+  window.isNight = isNight;
   function armIdle() {
     clearTimeout(idleT);
-    if (view !== "avaleht") idleT = setTimeout(() => show("avaleht", true), 2 * 60000);
+    if (view === "elekter" || view === "ilm") idleT = setTimeout(() => show("avaleht", true), 2 * 60000);
+    else if (view === "avaleht") idleT = setTimeout(() => { if (!isNight() && window.slides?.unlocked()) show("pildid", false); else armIdle(); }, 3 * 60000);
   }
+  window.showView = v => show(v, true);
   ["pointerdown", "keydown", "wheel", "touchstart"].forEach(e => addEventListener(e, armIdle, { passive: true }));
 
   const WORDS = { clearsky: "selge", fair: "peamiselt selge", partlycloudy: "vahelduv pilvisus", cloudy: "pilves", fog: "udu",
@@ -736,6 +867,7 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
   document.getElementById("swBtn").onclick = () => show("avaleht", true);
   document.getElementById("hE").onclick = () => show("elekter", true);
   document.getElementById("hW").onclick = () => show("ilm", true);
+  document.getElementById("hP").onclick = () => show("pildid", true);
   const start = location.hash.slice(1);
   show(start === "ilm" || start === "elekter" ? start : "avaleht", false);
   addEventListener("hashchange", () => { const h = location.hash.slice(1); show(h === "ilm" || h === "elekter" ? h : "avaleht", false); });
