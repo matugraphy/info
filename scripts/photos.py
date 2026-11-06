@@ -92,7 +92,7 @@ def main():
     ap.add_argument("--local", help="read images from this folder instead of Google Drive")
     args = ap.parse_args()
 
-    password = os.environ.get("PHOTOS_PASSWORD", "")
+    password = os.environ.get("PHOTOS_PASSWORD", "").strip()  # the page trims what is typed, so trim here too
     if not password or not (args.local or (os.environ.get("GDRIVE_SA_JSON") and os.environ.get("PHOTOS_FOLDER_ID"))):
         print("Photos not set up (missing secrets); skipping.")
         return

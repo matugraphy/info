@@ -166,6 +166,8 @@ body { margin: 0; background: #000; color: var(--fg); font-family: "Atkinson Hyp
 .plock input { font: inherit; font-size: 26px; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--line); background: #111; color: var(--fg); text-align: center; }
 .plock button { font: 700 24px "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif; letter-spacing: .05em; padding: 14px; border-radius: 14px;
   border: 3px solid var(--fg); background: transparent; color: var(--fg); cursor: pointer; }
+.plock .pshow { display: flex; gap: 12px; align-items: center; justify-content: center; font-size: 20px; color: var(--muted); }
+.plock .pshow input { width: 26px; height: 26px; padding: 0; }
 .plock .pmsg { color: #e7a39b; min-height: 1.4em; }
 .pempty { position: absolute; inset: 0; display: grid; place-content: center; font-size: 22px; color: var(--muted); padding: 24px; text-align: center; }
 </style>
@@ -410,7 +412,8 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   <div class="pinfo" id="pInfo"><span id="pClock"></span><span id="pPrice"></span></div>
   <form class="plock" id="pLock" hidden>
     <p>Piltide vaatamiseks sisesta parool.</p>
-    <input id="pPass" type="password" autocomplete="current-password" aria-label="Parool">
+    <input id="pPass" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Parool">
+    <label class="pshow"><input type="checkbox" id="pShow"> Näita parooli</label>
     <button type="submit">AVA</button>
     <p class="pmsg" id="pMsg"></p>
   </form>
@@ -718,7 +721,7 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
 const TZ = "Europe/Tallinn", EVERY = 15000;
 const imgs = [document.getElementById("pA"), document.getElementById("pB")];
 const lock = document.getElementById("pLock"), pass = document.getElementById("pPass"), msg = document.getElementById("pMsg"), empty = document.getElementById("pEmpty");
-let meta = null, key = null, keySalt = "", list = [], order = [], at = 0, front = 0, timer = null, auto = false, urls = [];
+let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], at = 0, front = 0, timer = null, auto = false, urls = [];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const stored = () => { try { return localStorage.getItem("photoPass") || ""; } catch { return ""; } };
 
@@ -732,12 +735,15 @@ async function open(buf) {
   return crypto.subtle.decrypt({ name: "AES-GCM", iv: b.slice(0, 12) }, key, b.slice(12));
 }
 async function unlock(pw) {
+  pw = pw.trim();  // a stray space from a keyboard or a paste must not lock the photos
+  netFail = false;
   if (!meta || !pw || !crypto.subtle) return false;
   try {
     const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
     key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(meta.salt), iterations: meta.iterations, hash: "SHA-256" },
       base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
-    const r = await fetch("photos/list.bin", { cache: "no-store" });
+    const r = await fetch("photos/list.bin", { cache: "no-store" }).catch(() => null);
+    if (!r || !r.ok) { netFail = true; throw new Error("list.bin"); }
     list = JSON.parse(new TextDecoder().decode(await open(await r.arrayBuffer())));
     keySalt = meta.salt;
     return true;
@@ -791,10 +797,11 @@ window.slides = {
 lock.addEventListener("submit", async e => {
   e.preventDefault();
   msg.textContent = "Kontrollin…";
-  if (await unlock(pass.value)) { try { localStorage.setItem("photoPass", pass.value); } catch {} begin(); }
-  else msg.textContent = "Vale parool. Proovi uuesti.";
+  if (await unlock(pass.value)) { try { localStorage.setItem("photoPass", pass.value.trim()); } catch {} begin(); }
+  else msg.textContent = netFail ? "Pilte ei saanud laadida. Proovi uuesti." : "Vale parool. Proovi uuesti.";
 });
 lock.addEventListener("click", e => e.stopPropagation());
+document.getElementById("pShow").addEventListener("change", e => { pass.type = e.target.checked ? "text" : "password"; });
 document.getElementById("vP").addEventListener("click", () => { if (lock.hidden) window.showView?.("avaleht"); });
 getMeta().then(m => { if (m && stored()) unlock(stored()); });
 })();
