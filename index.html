@@ -154,6 +154,8 @@ body { margin: 0; background: #000; color: var(--fg); font-family: "Atkinson Hyp
 #vP { position: fixed; inset: 0; background: #000; overflow: hidden; cursor: pointer; }
 #vP img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 1.6s ease; }
 #vP img.on { opacity: 1; }
+#vP img.top { z-index: 1; }
+.pinfo, .parr, .plock, .pempty { z-index: 2; }
 @media (prefers-reduced-motion: reduce) { #vP img { transition: none; } }
 .pinfo { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px));
   display: flex; align-items: baseline; gap: 18px; font-weight: 700; font-size: clamp(22px, 5vh, 34px); font-variant-numeric: tabular-nums;
@@ -162,7 +164,7 @@ body { margin: 0; background: #000; color: var(--fg); font-family: "Atkinson Hyp
 .pdot { display: inline-block; width: .45em; height: .45em; border-radius: 50%; margin-left: .3em; vertical-align: middle; }
 .pdot.cheap { background: #2e9d4f; } .pdot.mid { background: #d1b13a; } .pdot.high { background: #d14b3f; }
 .parr { position: absolute; top: 50%; transform: translateY(-50%); width: 76px; height: 132px; padding: 0 0 10px; border: 0; border-radius: 16px;
-  background: rgba(0, 0, 0, .3); color: #fff; font: 400 76px/1 system-ui, sans-serif; opacity: .65; cursor: pointer; }
+  background: rgba(0, 0, 0, .3); color: #fff; font: 400 76px/1 system-ui, sans-serif; opacity: .65; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .parr:active { opacity: 1; }
 #pPrev { left: max(10px, env(safe-area-inset-left, 0px)); }
 #pNext { right: max(10px, env(safe-area-inset-right, 0px)); }
@@ -759,8 +761,18 @@ async function unlock(pw) {
 }
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
+// The new photo fades in on top while the old one stays fully visible underneath, so the screen never dips
+// to black between photos; an arrow (quick) swaps at once.
+function swap(back, quick) {
+  const old = imgs[front];
+  back.style.transition = quick ? "none" : "";
+  back.classList.add("top", "on"); old.classList.remove("top");
+  front = 1 - front;
+  const hide = () => { if (imgs[front] !== old) { old.style.transition = "none"; old.classList.remove("on"); } };
+  if (quick) hide(); else setTimeout(hide, 1700);
+}
 // step 1 is the next photo, -1 the previous one; the order is shuffled once per start, so back really goes back.
-async function go(step) {
+async function go(step, quick = false) {
   if (!order.length) return;
   cur = (cur + step + order.length) % order.length;
   const name = order[cur], mine = ++seq;
@@ -770,7 +782,7 @@ async function go(step) {
     if (mine !== seq) return;  // a later tap already asked for another photo
     const url = URL.createObjectURL(new Blob([data], { type: "image/jpeg" }));
     const back = imgs[1 - front];
-    back.onload = () => { back.classList.add("on"); imgs[front].classList.remove("on"); front = 1 - front; };
+    back.onload = () => swap(back, quick);
     back.src = url;
     urls.push(url); while (urls.length > 3) URL.revokeObjectURL(urls.shift());
   } catch {}
@@ -783,7 +795,7 @@ function showNext() {
 }
 function restart() { clearInterval(timer); timer = setInterval(() => { info(); showNext(); }, EVERY); }
 // After an arrow the chosen photo stays a full turn.
-function step(d) { if (lock.hidden && order.length > 1) { go(d); restart(); } }
+function step(d) { if (lock.hidden && order.length > 1) { go(d, true); restart(); } }
 function info() {
   const now = new Date();
   document.getElementById("pClock").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
