@@ -731,7 +731,8 @@ const TZ = "Europe/Tallinn", EVERY = 15000;
 const imgs = [document.getElementById("pA"), document.getElementById("pB")];
 const lock = document.getElementById("pLock"), pass = document.getElementById("pPass"), msg = document.getElementById("pMsg"), empty = document.getElementById("pEmpty");
 const arrows = [document.getElementById("pPrev"), document.getElementById("pNext")];
-let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], cur = -1, seq = 0, front = 0, timer = null, startedNight = false, urls = [];
+let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], cur = -1, seq = 0, front = 0, timer = null, startedNight = false;
+const cache = new Map();  // photo file -> promise of a decrypted image URL, kept for the photos around the current one
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const stored = () => { try { return localStorage.getItem("photoPass") || ""; } catch { return ""; } };
 
@@ -756,6 +757,7 @@ async function unlock(pw) {
     if (!r || !r.ok) { netFail = true; throw new Error("list.bin"); }
     list = JSON.parse(new TextDecoder().decode(await open(await r.arrayBuffer())));
     keySalt = meta.salt;
+    keep([]);  // a new publish can put a different photo behind the same file name
     return true;
   } catch { key = null; list = []; return false; }
 }
@@ -771,21 +773,35 @@ function swap(back, quick) {
   const hide = () => { if (imgs[front] !== old) { old.style.transition = "none"; old.classList.remove("on"); } };
   if (quick) hide(); else setTimeout(hide, 1700);
 }
+function load(name) {
+  if (!cache.has(name)) {
+    const p = fetch("photos/" + name, { cache: "no-store" }).then(r => { if (!r.ok) throw new Error(name); return r.arrayBuffer(); })
+      .then(open).then(d => URL.createObjectURL(new Blob([d], { type: "image/jpeg" })));
+    p.catch(() => cache.delete(name));
+    cache.set(name, p);
+  }
+  return cache.get(name);
+}
+function keep(names) {
+  for (const [n, p] of cache) if (!names.includes(n)) { cache.delete(n); p.then(u => URL.revokeObjectURL(u), () => {}); }
+}
 // step 1 is the next photo, -1 the previous one; the order is shuffled once per start, so back really goes back.
 async function go(step, quick = false) {
   if (!order.length) return;
   cur = (cur + step + order.length) % order.length;
-  const name = order[cur], mine = ++seq;
+  const n = order.length, at = d => order[(cur + d + n) % n], name = order[cur], mine = ++seq;
+  // The photos either side are fetched and decrypted ahead, so an arrow has its photo ready.
+  keep([-2, -1, 0, 1, 2].map(at));
   try {
-    const r = await fetch("photos/" + name, { cache: "no-store" });
-    const data = await open(await r.arrayBuffer());
+    const url = await load(name);
     if (mine !== seq) return;  // a later tap already asked for another photo
-    const url = URL.createObjectURL(new Blob([data], { type: "image/jpeg" }));
     const back = imgs[1 - front];
-    back.onload = () => swap(back, quick);
     back.src = url;
-    urls.push(url); while (urls.length > 3) URL.revokeObjectURL(urls.shift());
+    await back.decode();  // switch only once the photo can be drawn, or a phone shows a black frame
+    if (mine !== seq) return;
+    swap(back, quick);
   } catch {}
+  load(at(1)).catch(() => {}); load(at(-1)).catch(() => {});
 }
 // When 22:00 comes during the slideshow, it gives way to the dim night screen however it was started.
 // Opened by hand at night, it runs until 10 minutes pass without a touch (armIdle).
