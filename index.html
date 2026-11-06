@@ -729,7 +729,7 @@ const TZ = "Europe/Tallinn", EVERY = 15000;
 const imgs = [document.getElementById("pA"), document.getElementById("pB")];
 const lock = document.getElementById("pLock"), pass = document.getElementById("pPass"), msg = document.getElementById("pMsg"), empty = document.getElementById("pEmpty");
 const arrows = [document.getElementById("pPrev"), document.getElementById("pNext")];
-let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], cur = -1, seq = 0, front = 0, timer = null, auto = false, urls = [];
+let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], cur = -1, seq = 0, front = 0, timer = null, startedNight = false, urls = [];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const stored = () => { try { return localStorage.getItem("photoPass") || ""; } catch { return ""; } };
 
@@ -775,13 +775,15 @@ async function go(step) {
     urls.push(url); while (urls.length > 3) URL.revokeObjectURL(urls.shift());
   } catch {}
 }
+// When 22:00 comes during the slideshow, it gives way to the dim night screen however it was started.
+// Opened by hand at night, it runs until 10 minutes pass without a touch (armIdle).
 function showNext() {
-  if (auto && window.isNight?.()) { window.showView?.("avaleht"); return; }
+  if (!startedNight && window.isNight?.()) { window.showView?.("avaleht"); return; }
   go(1);
 }
 function restart() { clearInterval(timer); timer = setInterval(() => { info(); showNext(); }, EVERY); }
-// An arrow is a person looking, so the slideshow stops counting as a screensaver and waits a full turn.
-function step(d) { if (lock.hidden && order.length > 1) { auto = false; go(d); restart(); } }
+// After an arrow the chosen photo stays a full turn.
+function step(d) { if (lock.hidden && order.length > 1) { go(d); restart(); } }
 function info() {
   const now = new Date();
   document.getElementById("pClock").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
@@ -800,8 +802,8 @@ async function begin() {
 
 window.slides = {
   unlocked: () => !!key && list.length > 0,
-  async start(isAuto) {
-    auto = isAuto;
+  async start() {
+    startedNight = !!window.isNight?.();
     await getMeta();
     if (!meta) { lock.hidden = true; empty.hidden = false; return; }
     // A new publish brings a new salt, so the key is rebuilt from the remembered password.
@@ -842,8 +844,7 @@ getMeta().then(m => { if (m && stored()) unlock(stored()); });
     root.classList.toggle("graph", view === "elekter");
     const fs = document.getElementById("fs");
     sw.hidden = view === "avaleht" || view === "pildid";
-    // The slideshow counts as a screensaver only when it started by itself, not from the PILDID button.
-    if (view === "pildid") window.slides?.start(!user);
+    if (view === "pildid") window.slides?.start();
     else window.slides?.stop();
     if (view === "avaleht") { document.getElementById("hFoot").appendChild(fs); renderH(); }
     else if (view !== "pildid") {
@@ -855,13 +856,14 @@ getMeta().then(m => { if (m && stored()) unlock(stored()); });
     armIdle();
   }
 
-  // Back to the dark home screen after 2 minutes without a touch; on the home screen, the photos start
-  // as a screensaver after 3 more minutes (not at night, and only once this phone has the password).
+  // Back to the dark home screen after 2 minutes without a touch (photos at night: 10 minutes); on the home
+  // screen, the photos start as a screensaver after 3 more minutes (not at night, and only once this phone has the password).
   const isNight = () => { const h = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()); return h >= 22 || h < 7; };
   window.isNight = isNight;
   function armIdle() {
     clearTimeout(idleT);
     if (view === "elekter" || view === "ilm") idleT = setTimeout(() => show("avaleht", true), 2 * 60000);
+    else if (view === "pildid" && isNight()) idleT = setTimeout(() => show("avaleht", true), 10 * 60000);
     else if (view === "avaleht") idleT = setTimeout(() => { if (!isNight() && window.slides?.unlocked()) show("pildid", false); else armIdle(); }, 3 * 60000);
   }
   window.showView = v => show(v, true);
