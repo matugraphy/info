@@ -56,7 +56,8 @@ jobs:
         run: |
           if [ -n "$PHOTOS_PASSWORD" ]; then
             pip install --quiet pillow pillow-heif cryptography google-auth requests
-            python scripts/photos.py _site
+            # A photo failure must not stop the prices and forecast from publishing.
+            python scripts/photos.py _site || { echo "::warning::Photos failed; publishing without them."; rm -rf _site/photos; }
           else
             echo "Photos not set up yet; skipping."
           fi

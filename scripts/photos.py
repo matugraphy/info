@@ -47,7 +47,10 @@ def drive_token(sa_json):
 
 
 def drive_get(url, token):
-    return urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Bearer " + token}), timeout=120).read()
+    try:
+        return urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Bearer " + token}), timeout=120).read()
+    except urllib.error.HTTPError as e:  # Drive's reason is in the body, not the status line
+        raise RuntimeError(f"Drive {e.code}: {e.read().decode(errors='replace')[:500]}") from None
 
 
 def drive_images(folder, token):
@@ -99,7 +102,7 @@ def main():
     seal = lambda data: (lambda iv: iv + key.encrypt(iv, data, None))(secrets.token_bytes(12))
 
     source = local_images(args.local) if args.local else drive_images(
-        os.environ["PHOTOS_FOLDER_ID"], drive_token(os.environ["GDRIVE_SA_JSON"]))
+        os.environ["PHOTOS_FOLDER_ID"].strip(), drive_token(os.environ["GDRIVE_SA_JSON"]))
     out = os.path.join(args.out_dir, "photos")
     os.makedirs(out, exist_ok=True)
     names = []
