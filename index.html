@@ -161,6 +161,11 @@ body { margin: 0; background: #000; color: var(--fg); font-family: "Atkinson Hyp
 .pinfo .u { font-size: .6em; font-weight: 400; }
 .pdot { display: inline-block; width: .45em; height: .45em; border-radius: 50%; margin-left: .3em; vertical-align: middle; }
 .pdot.cheap { background: #2e9d4f; } .pdot.mid { background: #d1b13a; } .pdot.high { background: #d14b3f; }
+.parr { position: absolute; top: 50%; transform: translateY(-50%); width: 76px; height: 132px; padding: 0 0 10px; border: 0; border-radius: 16px;
+  background: rgba(0, 0, 0, .3); color: #fff; font: 400 76px/1 system-ui, sans-serif; opacity: .65; cursor: pointer; }
+.parr:active { opacity: 1; }
+#pPrev { left: max(10px, env(safe-area-inset-left, 0px)); }
+#pNext { right: max(10px, env(safe-area-inset-right, 0px)); }
 .plock { position: absolute; inset: 0; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; cursor: default; }
 .plock p { margin: 0; font-size: 22px; color: var(--muted); }
 .plock input { font: inherit; font-size: 26px; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--line); background: #111; color: var(--fg); text-align: center; }
@@ -410,6 +415,8 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 <main id="vP" hidden>
   <img id="pA" alt=""><img id="pB" alt="">
   <div class="pinfo" id="pInfo"><span id="pClock"></span><span id="pPrice"></span></div>
+  <button class="parr" id="pPrev" type="button" aria-label="Eelmine pilt" hidden>&lsaquo;</button>
+  <button class="parr" id="pNext" type="button" aria-label="Järgmine pilt" hidden>&rsaquo;</button>
   <form class="plock" id="pLock" hidden>
     <p>Piltide vaatamiseks sisesta parool.</p>
     <input id="pPass" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Parool">
@@ -721,7 +728,8 @@ window.weatherNow = () => { const t = Date.now() / 1000, c = steps.filter(s => s
 const TZ = "Europe/Tallinn", EVERY = 15000;
 const imgs = [document.getElementById("pA"), document.getElementById("pB")];
 const lock = document.getElementById("pLock"), pass = document.getElementById("pPass"), msg = document.getElementById("pMsg"), empty = document.getElementById("pEmpty");
-let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], at = 0, front = 0, timer = null, auto = false, urls = [];
+const arrows = [document.getElementById("pPrev"), document.getElementById("pNext")];
+let netFail = false, meta = null, key = null, keySalt = "", list = [], order = [], cur = -1, seq = 0, front = 0, timer = null, auto = false, urls = [];
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const stored = () => { try { return localStorage.getItem("photoPass") || ""; } catch { return ""; } };
 
@@ -751,20 +759,29 @@ async function unlock(pw) {
 }
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
-async function showNext() {
-  if (auto && window.isNight?.()) { window.showView?.("avaleht"); return; }
+// step 1 is the next photo, -1 the previous one; the order is shuffled once per start, so back really goes back.
+async function go(step) {
   if (!order.length) return;
-  const name = order[at++ % order.length];
-  if (at % order.length === 0) shuffle(order);
+  cur = (cur + step + order.length) % order.length;
+  const name = order[cur], mine = ++seq;
   try {
     const r = await fetch("photos/" + name, { cache: "no-store" });
-    const url = URL.createObjectURL(new Blob([await open(await r.arrayBuffer())], { type: "image/jpeg" }));
+    const data = await open(await r.arrayBuffer());
+    if (mine !== seq) return;  // a later tap already asked for another photo
+    const url = URL.createObjectURL(new Blob([data], { type: "image/jpeg" }));
     const back = imgs[1 - front];
     back.onload = () => { back.classList.add("on"); imgs[front].classList.remove("on"); front = 1 - front; };
     back.src = url;
     urls.push(url); while (urls.length > 3) URL.revokeObjectURL(urls.shift());
   } catch {}
 }
+function showNext() {
+  if (auto && window.isNight?.()) { window.showView?.("avaleht"); return; }
+  go(1);
+}
+function restart() { clearInterval(timer); timer = setInterval(() => { info(); showNext(); }, EVERY); }
+// An arrow is a person looking, so the slideshow stops counting as a screensaver and waits a full turn.
+function step(d) { if (lock.hidden && order.length > 1) { auto = false; go(d); restart(); } }
 function info() {
   const now = new Date();
   document.getElementById("pClock").textContent = new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
@@ -775,10 +792,10 @@ function info() {
 async function begin() {
   lock.hidden = true;
   empty.hidden = list.length > 0;
-  order = shuffle(list.slice()); at = 0;
-  info(); await showNext();
-  clearInterval(timer);
-  timer = setInterval(() => { info(); showNext(); }, EVERY);
+  order = shuffle(list.slice()); cur = -1;
+  arrows.forEach(a => a.hidden = list.length < 2);
+  info(); await go(1);
+  restart();
 }
 
 window.slides = {
@@ -790,7 +807,7 @@ window.slides = {
     // A new publish brings a new salt, so the key is rebuilt from the remembered password.
     if (!key || keySalt !== meta.salt) await unlock(stored());
     if (key) begin();
-    else { lock.hidden = false; msg.textContent = ""; pass.value = ""; setTimeout(() => pass.focus(), 50); }
+    else { arrows.forEach(a => a.hidden = true); lock.hidden = false; msg.textContent = ""; pass.value = ""; setTimeout(() => pass.focus(), 50); }
   },
   stop() { clearInterval(timer); timer = null; imgs.forEach(i => i.classList.remove("on")); }
 };
@@ -801,6 +818,8 @@ lock.addEventListener("submit", async e => {
   else msg.textContent = netFail ? "Pilte ei saanud laadida. Proovi uuesti." : "Vale parool. Proovi uuesti.";
 });
 lock.addEventListener("click", e => e.stopPropagation());
+arrows.forEach((a, i) => a.addEventListener("click", e => { e.stopPropagation(); step(i ? 1 : -1); }));
+addEventListener("keydown", e => { if (timer && (e.key === "ArrowLeft" || e.key === "ArrowRight")) step(e.key === "ArrowRight" ? 1 : -1); });
 document.getElementById("pShow").addEventListener("change", e => { pass.type = e.target.checked ? "text" : "password"; });
 document.getElementById("vP").addEventListener("click", () => { if (lock.hidden) window.showView?.("avaleht"); });
 getMeta().then(m => { if (m && stored()) unlock(stored()); });
