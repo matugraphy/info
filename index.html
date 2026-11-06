@@ -809,7 +809,7 @@ async function go(step, quick = false) {
   } catch {}
   [1, -1, 2, 3].forEach(d => load(at(d)).catch(() => {}));
 }
-// When 22:00 comes during the slideshow, it gives way to the dim night screen however it was started.
+// When 22:00 comes during the slideshow, it gives way to the dim night screen.
 // Opened by hand at night, it runs until 10 minutes pass without a touch (armIdle).
 function showNext() {
   if (!startedNight && window.isNight?.()) { window.showView?.("avaleht"); return; }
@@ -834,7 +834,6 @@ async function begin() {
 }
 
 window.slides = {
-  unlocked: () => !!key && list.length > 0,
   async start() {
     startedNight = !!window.isNight?.();
     await getMeta();
@@ -889,15 +888,13 @@ getMeta().then(m => { if (m && stored()) unlock(stored()); });
     armIdle();
   }
 
-  // Back to the dark home screen after 2 minutes without a touch (photos at night: 10 minutes); on the home
-  // screen, the photos start as a screensaver after 3 more minutes (not at night, and only once this phone has the password).
+  // Back to the dark home screen after 2 minutes without a touch (photos at night: 10 minutes).
   const isNight = () => { const h = +new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()); return h >= 22 || h < 7; };
   window.isNight = isNight;
   function armIdle() {
     clearTimeout(idleT);
     if (view === "elekter" || view === "ilm") idleT = setTimeout(() => show("avaleht", true), 2 * 60000);
     else if (view === "pildid" && isNight()) idleT = setTimeout(() => show("avaleht", true), 10 * 60000);
-    else if (view === "avaleht") idleT = setTimeout(() => { if (!isNight() && window.slides?.unlocked()) show("pildid", false); else armIdle(); }, 3 * 60000);
   }
   window.showView = v => show(v, true);
   ["pointerdown", "keydown", "wheel", "touchstart"].forEach(e => addEventListener(e, armIdle, { passive: true }));
