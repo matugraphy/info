@@ -375,7 +375,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
     <p class="note" id="turn" hidden>Keera telefon külili, siis näed kõiki hindu.</p>
   </section>
 
-  <footer id="foot">Tunnihind senti/kWh, ilma käibemaksuta. Allikas: Elering, Nord Pool börsihind Eestis.</footer>
+  <footer id="foot">Tunnihind senti/kWh koos 24% käibemaksuga. Allikas: Elering, Nord Pool börsihind Eestis.</footer>
 </main>
 
 <main id="vW" hidden>
@@ -441,7 +441,9 @@ const dayKey = t => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(ne
 const hm = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t * 1000));
 const hour = t => hm(t).slice(0, 2);
 const longDate = t => new Intl.DateTimeFormat("et-EE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(new Date(t * 1000));
-const cents = p => p / 10;
+// Elering publishes EUR/MWh without VAT; shown in cents/kWh with Estonian VAT, as in the Eesti Energia app.
+const VAT = 1.24;
+const cents = p => p / 10 * VAT;
 const fmt = c => c.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const level = c => c < 5 ? "cheap" : c < 20 ? "mid" : "high";
 const WORD = { cheap: "ODAV", mid: "KESKMINE", high: "KALLIS" };
