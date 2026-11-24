@@ -45,8 +45,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A run may have waited behind another one, so build on the latest main, not the commit it started from.
+          mkdir -p /tmp/fresh && cp prices.json weather.json /tmp/fresh/
+          git fetch -q origin main && git reset -q --hard origin/main
+          cp /tmp/fresh/prices.json /tmp/fresh/weather.json .
           git add prices.json weather.json
-          git diff --cached --quiet || (git commit -m "Update data" && git pull --rebase && git push)
+          git diff --cached --quiet || (git commit -m "Update data" && git push)
 
       - name: Build site
         run: |
