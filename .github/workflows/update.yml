@@ -21,15 +21,22 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    # Room for the wait for tomorrow's prices (at most 5 h 30 min) plus the rest of the job.
+    timeout-minutes: 350
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      # GitHub starts scheduled runs only every few hours, so a run that lands before Elering publishes
+      # tomorrow's prices waits for them instead of leaving them to the next run in the evening.
+      - name: Wait for tomorrow's prices
+        run: python scripts/wait_tomorrow.py
 
       - name: Fetch prices and forecast
         run: python scripts/fetch.py
@@ -39,7 +46,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add prices.json weather.json
-          git diff --cached --quiet || (git commit -m "Update data" && git push)
+          git diff --cached --quiet || (git commit -m "Update data" && git pull --rebase && git push)
 
       - name: Build site
         run: |
@@ -62,11 +69,22 @@ jobs:
             echo "Photos not set up yet; skipping."
           fi
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
+      # Publishing sometimes fails with "No artifacts named github-pages were found", a GitHub-side hiccup.
+      # Try once more after a minute before giving up.
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+
+      - name: Pause before retrying the publish
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 60
+
+      - id: deploy-retry
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v5
