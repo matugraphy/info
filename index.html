@@ -563,6 +563,9 @@ function load() {
 load();
 setInterval(render, 60000);
 setInterval(load, 15 * 60000);
+// Reload the whole page once a night at 04:00, so a published code change reaches the screen by morning.
+const loadedAt = Date.now();
+setInterval(() => { if (hm(Date.now() / 1000) === "04:00" && Date.now() - loadedAt > 3600000) location.reload(); }, 30000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });
 window.renderE = render;
 window.priceNow = () => { const t = Date.now() / 1000, c = hours.find(s => s[0] <= t && t < s[0] + 3600); return c ? cents(c[1]) : null; };
